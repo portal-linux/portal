@@ -84,6 +84,9 @@ extension Portal {
         @Argument(help: "name of the vm to start.")
         var name: String
 
+        @Option(help: "host directory to share into the guest at /mnt/mac (pass an empty string to disable).")
+        var share: String = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Portal/shared").path
+
         func run() throws {
             let store = vmStore()
             let paths = store.paths(for: name)
@@ -107,8 +110,10 @@ extension Portal {
                 commandLine: manifest.commandLine
             )
 
+            let sharedFolder = share.isEmpty ? nil : try SharedFolder(tag: "mac", hostPath: share)
+
             let bootstrapper = VMBootstrapper(configuration: vmConfig)
-            let vzConfig = try bootstrapper.makeVirtualMachineConfiguration(boot: boot)
+            let vzConfig = try bootstrapper.makeVirtualMachineConfiguration(boot: boot, sharedFolder: sharedFolder)
 
             let runner = VMRunner()
             try runner.run(configuration: vzConfig)
