@@ -1,7 +1,17 @@
 import ArgumentParser
+import Darwin
 import Foundation
 import PortalCore
 import Virtualization
+
+nonisolated(unsafe) private var originalTermiosForRestore: termios?
+
+private func restoreTerminalAndExit(_ signalNumber: Int32) {
+    if var original = originalTermiosForRestore {
+        tcsetattr(STDIN_FILENO, TCSANOW, &original)
+    }
+    exit(128 + signalNumber)
+}
 
 @main
 struct Portal: ParsableCommand {
@@ -129,6 +139,20 @@ extension Portal {
                 sharedFolder: sharedFolder,
                 enableRosetta: enableRosetta
             )
+
+            var original = termios()
+            tcgetattr(STDIN_FILENO, &original)
+            originalTermiosForRestore = original
+            var raw = RawTerminalMode.makeRaw(from: original)
+            tcsetattr(STDIN_FILENO, TCSANOW, &raw)
+            signal(SIGTERM, restoreTerminalAndExit)
+            signal(SIGHUP, restoreTerminalAndExit)
+            defer {
+                var restore = original
+                tcsetattr(STDIN_FILENO, TCSANOW, &restore)
+            }
+
+            print("console attached (ctrl-c goes to the guest; poweroff the guest to exit, or ctrl-c this process from another terminal)")
 
             let runner = VMRunner()
             try runner.run(configuration: vzConfig)

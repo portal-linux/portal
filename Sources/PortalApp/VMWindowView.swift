@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import Virtualization
 import PortalCore
 import Foundation
@@ -72,6 +73,11 @@ struct VMHostView: NSViewRepresentable {
     func makeNSView(context: Context) -> VZVirtualMachineView {
         let view = VZVirtualMachineView()
         view.virtualMachine = virtualMachine
+        DispatchQueue.main.async {
+            NSApp.activate(ignoringOtherApps: true)
+            view.window?.makeKeyAndOrderFront(nil)
+            view.window?.makeFirstResponder(view)
+        }
         return view
     }
 
