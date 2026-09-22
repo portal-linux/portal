@@ -81,6 +81,8 @@ public struct VMBootstrapper {
                 VZVirtioGraphicsScanoutConfiguration(widthInPixels: 1280, heightInPixels: 800)
             ]
             vzConfig.graphicsDevices = [graphicsDevice]
+            vzConfig.keyboards = [VZUSBKeyboardConfiguration()]
+            vzConfig.pointingDevices = [VZUSBScreenCoordinatePointingDeviceConfiguration()]
         }
 
         return vzConfig
