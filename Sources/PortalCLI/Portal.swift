@@ -1,4 +1,7 @@
 import ArgumentParser
+import Foundation
+import PortalCore
+import Virtualization
 
 @main
 struct Portal: ParsableCommand {
@@ -9,17 +12,67 @@ struct Portal: ParsableCommand {
     )
 }
 
+func vmStore() -> VMStore {
+    let base = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Portal/vms", isDirectory: true)
+    return VMStore(baseDirectory: base)
+}
+
 extension Portal {
     struct Create: ParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "create a new vm from a distro image."
+            abstract: "create a new vm from a kernel, initrd and disk image."
         )
 
         @Argument(help: "name of the vm to create.")
         var name: String
 
+        @Option(help: "path to the linux kernel image.")
+        var kernel: String
+
+        @Option(help: "path to the initial ramdisk (optional).")
+        var initrd: String?
+
+        @Option(help: "path to the ext4 root disk image.")
+        var disk: String
+
+        @Option(help: "number of vCPUs.")
+        var cpu: Int = 4
+
+        @Option(name: .customLong("memory-gb"), help: "memory in GB.")
+        var memoryGB: Int = 4
+
+        @Option(help: "kernel command line.")
+        var commandLine: String = "console=hvc0 root=/dev/vda rw rootwait"
+
         func run() throws {
-            print("create: \(name)")
+            let fm = FileManager.default
+            for path in [kernel, disk] {
+                guard fm.fileExists(atPath: path) else {
+                    throw ValidationError("no such file: \(path)")
+                }
+            }
+            if let initrd, !fm.fileExists(atPath: initrd) {
+                throw ValidationError("no such file: \(initrd)")
+            }
+
+            let store = vmStore()
+            let paths = store.paths(for: name)
+            try fm.createDirectory(at: paths.root, withIntermediateDirectories: true)
+
+            let manifest = VMManifest(
+                name: name,
+                cpuCount: cpu,
+                memoryBytes: UInt64(memoryGB) * 1024 * 1024 * 1024,
+                commandLine: commandLine,
+                kernelPath: kernel,
+                initialRamdiskPath: initrd,
+                diskImagePath: disk
+            )
+
+            let data = try JSONEncoder().encode(manifest)
+            try data.write(to: paths.manifest)
+
+            print("created \(name) at \(paths.root.path)")
         }
     }
 
@@ -32,7 +85,33 @@ extension Portal {
         var name: String
 
         func run() throws {
-            print("start: \(name)")
+            let store = vmStore()
+            let paths = store.paths(for: name)
+
+            guard FileManager.default.fileExists(atPath: paths.manifest.path) else {
+                throw ValidationError("no vm named \(name), run 'portal create \(name)' first")
+            }
+
+            let data = try Data(contentsOf: paths.manifest)
+            let manifest = try JSONDecoder().decode(VMManifest.self, from: data)
+
+            let vmConfig = try VMConfiguration(
+                cpuCount: manifest.cpuCount,
+                memoryBytes: manifest.memoryBytes,
+                diskImagePath: manifest.diskImagePath
+            )
+
+            let boot = BootImage(
+                kernelURL: URL(fileURLWithPath: manifest.kernelPath),
+                initialRamdiskURL: manifest.initialRamdiskPath.map { URL(fileURLWithPath: $0) },
+                commandLine: manifest.commandLine
+            )
+
+            let bootstrapper = VMBootstrapper(configuration: vmConfig)
+            let vzConfig = try bootstrapper.makeVirtualMachineConfiguration(boot: boot)
+
+            let runner = VMRunner()
+            try runner.run(configuration: vzConfig)
         }
     }
 

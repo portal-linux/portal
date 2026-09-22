@@ -4,9 +4,22 @@ import ArgumentParser
 
 struct PortalCommandTests {
     @Test func createParsesName() throws {
-        let parsed = try Portal.parseAsRoot(["create", "arch"])
+        let parsed = try Portal.parseAsRoot([
+            "create", "arch",
+            "--kernel", "/tmp/kernel",
+            "--disk", "/tmp/disk.img"
+        ])
         let create = try #require(parsed as? Portal.Create)
         #expect(create.name == "arch")
+        #expect(create.kernel == "/tmp/kernel")
+        #expect(create.disk == "/tmp/disk.img")
+        #expect(create.cpu == 4)
+    }
+
+    @Test func createRequiresKernelAndDisk() {
+        #expect(throws: (any Error).self) {
+            _ = try Portal.parseAsRoot(["create", "arch"])
+        }
     }
 
     @Test func startParsesName() throws {
