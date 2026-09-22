@@ -49,12 +49,18 @@ public struct VMBootstrapper {
         networkDevice.attachment = VZNATNetworkDeviceAttachment()
         vzConfig.networkDevices = [networkDevice]
 
-        let serialPort = VZVirtioConsoleDeviceSerialPortConfiguration()
-        serialPort.attachment = VZFileHandleSerialPortAttachment(
-            fileHandleForReading: .standardInput,
-            fileHandleForWriting: .standardOutput
-        )
-        vzConfig.serialPorts = [serialPort]
+        // a gui-launched process (via `open`) has no real stdin/stdout - attaching
+        // a serial port bound to those file handles there can block the guest if
+        // the kernel writes console output into an fd nobody drains. only attach
+        // it for the headless cli path; the graphics path uses the framebuffer.
+        if !enableGraphics {
+            let serialPort = VZVirtioConsoleDeviceSerialPortConfiguration()
+            serialPort.attachment = VZFileHandleSerialPortAttachment(
+                fileHandleForReading: .standardInput,
+                fileHandleForWriting: .standardOutput
+            )
+            vzConfig.serialPorts = [serialPort]
+        }
 
         var directoryDevices: [VZVirtioFileSystemDeviceConfiguration] = []
 
