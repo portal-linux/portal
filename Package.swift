@@ -9,7 +9,7 @@ let package = Package(
     products: [
         .library(name: "PortalCore", targets: ["PortalCore"]),
         .executable(name: "portal", targets: ["PortalCLI"]),
-        .library(name: "PortalApp", targets: ["PortalApp"])
+        .executable(name: "PortalApp", targets: ["PortalApp"])
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0")
@@ -25,7 +25,7 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ]
         ),
-        .target(
+        .executableTarget(
             name: "PortalApp",
             dependencies: ["PortalCore"]
         ),

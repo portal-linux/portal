@@ -27,7 +27,8 @@ public struct VMBootstrapper {
     public func makeVirtualMachineConfiguration(
         boot: BootImage,
         sharedFolder: SharedFolder? = nil,
-        enableRosetta: Bool = false
+        enableRosetta: Bool = false,
+        enableGraphics: Bool = false
     ) throws -> VZVirtualMachineConfiguration {
         let vzConfig = VZVirtualMachineConfiguration()
         vzConfig.cpuCount = configuration.cpuCount
@@ -72,6 +73,14 @@ public struct VMBootstrapper {
 
         if !directoryDevices.isEmpty {
             vzConfig.directorySharingDevices = directoryDevices
+        }
+
+        if enableGraphics {
+            let graphicsDevice = VZVirtioGraphicsDeviceConfiguration()
+            graphicsDevice.scanouts = [
+                VZVirtioGraphicsScanoutConfiguration(widthInPixels: 1280, heightInPixels: 800)
+            ]
+            vzConfig.graphicsDevices = [graphicsDevice]
         }
 
         return vzConfig

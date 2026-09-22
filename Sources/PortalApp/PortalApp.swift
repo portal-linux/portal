@@ -1,11 +1,10 @@
 import SwiftUI
 
-public struct PortalApp: App {
-    public init() {}
-
-    public var body: some Scene {
+@main
+struct PortalApp: App {
+    var body: some Scene {
         WindowGroup {
-            ContentView()
+            VMWindowView(vmName: "arch")
         }
     }
 }
