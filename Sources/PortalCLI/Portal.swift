@@ -111,9 +111,24 @@ extension Portal {
             )
 
             let sharedFolder = share.isEmpty ? nil : try SharedFolder(tag: "mac", hostPath: share)
+            let rosettaAvailability: RosettaAvailability
+            switch VZLinuxRosettaDirectoryShare.availability {
+            case .notSupported: rosettaAvailability = .notSupported
+            case .notInstalled: rosettaAvailability = .notInstalled
+            case .installed: rosettaAvailability = .installed
+            @unknown default: rosettaAvailability = .notSupported
+            }
+            let enableRosetta = RosettaSupport.shouldEnable(for: rosettaAvailability)
+            if !enableRosetta {
+                print("rosetta not available on this host (\(rosettaAvailability)), skipping x86_64 binary support")
+            }
 
             let bootstrapper = VMBootstrapper(configuration: vmConfig)
-            let vzConfig = try bootstrapper.makeVirtualMachineConfiguration(boot: boot, sharedFolder: sharedFolder)
+            let vzConfig = try bootstrapper.makeVirtualMachineConfiguration(
+                boot: boot,
+                sharedFolder: sharedFolder,
+                enableRosetta: enableRosetta
+            )
 
             let runner = VMRunner()
             try runner.run(configuration: vzConfig)

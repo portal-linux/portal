@@ -26,7 +26,8 @@ public struct VMBootstrapper {
     @available(macOS 14.0, *)
     public func makeVirtualMachineConfiguration(
         boot: BootImage,
-        sharedFolder: SharedFolder? = nil
+        sharedFolder: SharedFolder? = nil,
+        enableRosetta: Bool = false
     ) throws -> VZVirtualMachineConfiguration {
         let vzConfig = VZVirtualMachineConfiguration()
         vzConfig.cpuCount = configuration.cpuCount
@@ -54,11 +55,23 @@ public struct VMBootstrapper {
         )
         vzConfig.serialPorts = [serialPort]
 
+        var directoryDevices: [VZVirtioFileSystemDeviceConfiguration] = []
+
         if let sharedFolder {
             let device = VZVirtioFileSystemDeviceConfiguration(tag: sharedFolder.tag)
             let url = URL(fileURLWithPath: sharedFolder.hostPath, isDirectory: true)
             device.share = VZSingleDirectoryShare(directory: VZSharedDirectory(url: url, readOnly: false))
-            vzConfig.directorySharingDevices = [device]
+            directoryDevices.append(device)
+        }
+
+        if enableRosetta {
+            let device = VZVirtioFileSystemDeviceConfiguration(tag: "rosetta")
+            device.share = try VZLinuxRosettaDirectoryShare()
+            directoryDevices.append(device)
+        }
+
+        if !directoryDevices.isEmpty {
+            vzConfig.directorySharingDevices = directoryDevices
         }
 
         return vzConfig
