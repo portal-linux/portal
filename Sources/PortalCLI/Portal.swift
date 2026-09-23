@@ -27,6 +27,29 @@ func vmStore() -> VMStore {
     return VMStore(baseDirectory: base)
 }
 
+func imagesBaseDirectory() -> URL {
+    FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Portal/images", isDirectory: true)
+}
+
+// ArgumentParser's ParsableCommand.run() is synchronous; this bridges a single
+// async operation into it without retrofitting the whole command tree onto
+// AsyncParsableCommand, matching the run-to-completion shape a one-shot CLI
+// invocation actually needs.
+func runBlocking<T: Sendable>(_ operation: @escaping @Sendable () async throws -> T) throws -> T {
+    let semaphore = DispatchSemaphore(value: 0)
+    nonisolated(unsafe) var result: Result<T, Error>!
+    Task {
+        do {
+            result = .success(try await operation())
+        } catch {
+            result = .failure(error)
+        }
+        semaphore.signal()
+    }
+    semaphore.wait()
+    return try result.get()
+}
+
 extension Portal {
     struct Create: ParsableCommand {
         static let configuration = CommandConfiguration(
@@ -36,14 +59,17 @@ extension Portal {
         @Argument(help: "name of the vm to create.")
         var name: String
 
+        @Option(help: "curated image name to download and use, e.g. arch-spin. mutually exclusive with --kernel/--disk.")
+        var image: String?
+
         @Option(help: "path to the linux kernel image.")
-        var kernel: String
+        var kernel: String?
 
         @Option(help: "path to the initial ramdisk (optional).")
         var initrd: String?
 
         @Option(help: "path to the ext4 root disk image.")
-        var disk: String
+        var disk: String?
 
         @Option(help: "number of vCPUs.")
         var cpu: Int = 4
@@ -54,9 +80,38 @@ extension Portal {
         @Option(help: "kernel command line.")
         var commandLine: String = "console=hvc0 root=/dev/vda rw rootwait"
 
+        static func validateSource(image: String?, kernel: String?, disk: String?) throws {
+            if image != nil && (kernel != nil || disk != nil) {
+                throw ValidationError("pass either --image or --kernel/--disk, not both")
+            }
+            if image == nil && (kernel == nil || disk == nil) {
+                throw ValidationError("pass --image <curated-name>, or both --kernel and --disk")
+            }
+        }
+
         func run() throws {
+            try Self.validateSource(image: image, kernel: kernel, disk: disk)
+
+            let store = vmStore()
+            let paths = store.paths(for: name)
+            try FileManager.default.createDirectory(at: paths.root, withIntermediateDirectories: true)
+
+            let manifest: VMManifest
+            if let image {
+                manifest = try createFromCuratedImage(image, paths: paths)
+            } else {
+                manifest = try createFromManualPaths(paths: paths)
+            }
+
+            let data = try JSONEncoder().encode(manifest)
+            try data.write(to: paths.manifest)
+
+            print("created \(name) at \(paths.root.path)")
+        }
+
+        private func createFromManualPaths(paths: VMPaths) throws -> VMManifest {
             let fm = FileManager.default
-            for path in [kernel, disk] {
+            for path in [kernel!, disk!] {
                 guard fm.fileExists(atPath: path) else {
                     throw ValidationError("no such file: \(path)")
                 }
@@ -65,24 +120,39 @@ extension Portal {
                 throw ValidationError("no such file: \(initrd)")
             }
 
-            let store = vmStore()
-            let paths = store.paths(for: name)
-            try fm.createDirectory(at: paths.root, withIntermediateDirectories: true)
-
-            let manifest = VMManifest(
+            return VMManifest(
                 name: name,
                 cpuCount: cpu,
                 memoryBytes: UInt64(memoryGB) * 1024 * 1024 * 1024,
                 commandLine: commandLine,
-                kernelPath: kernel,
+                kernelPath: kernel!,
                 initialRamdiskPath: initrd,
-                diskImagePath: disk
+                diskImagePath: disk!
             )
+        }
 
-            let data = try JSONEncoder().encode(manifest)
-            try data.write(to: paths.manifest)
+        private func createFromCuratedImage(_ imageName: String, paths: VMPaths) throws -> VMManifest {
+            let cachePaths = try runBlocking {
+                let (manifestData, _) = try await URLSession.shared.data(from: PortalImagesTrust.manifestURL)
+                let manifest = try JSONDecoder().decode(ImageManifest.self, from: manifestData)
+                guard let entry = manifest.entry(named: imageName) else {
+                    throw ValidationError("no curated image named \(imageName)")
+                }
 
-            print("created \(name) at \(paths.root.path)")
+                let store = ImageStore(baseDirectory: imagesBaseDirectory())
+                let downloader = ImageDownloader(store: store, publicKey: PortalImagesTrust.publicKey)
+                return try await downloader.fetch(entry: entry)
+            }
+
+            return VMManifest(
+                name: name,
+                cpuCount: cpu,
+                memoryBytes: UInt64(memoryGB) * 1024 * 1024 * 1024,
+                commandLine: commandLine,
+                kernelPath: cachePaths.kernel.path,
+                initialRamdiskPath: cachePaths.initrd.path,
+                diskImagePath: cachePaths.image.path
+            )
         }
     }
 

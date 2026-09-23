@@ -16,9 +16,32 @@ struct PortalCommandTests {
         #expect(create.cpu == 4)
     }
 
-    @Test func createRequiresKernelAndDisk() {
+    @Test func createParsesImageOption() throws {
+        let parsed = try Portal.parseAsRoot(["create", "arch", "--image", "arch-spin"])
+        let create = try #require(parsed as? Portal.Create)
+        #expect(create.image == "arch-spin")
+        #expect(create.kernel == nil)
+        #expect(create.disk == nil)
+    }
+
+    @Test func createValidationRequiresImageOrKernelAndDisk() {
         #expect(throws: (any Error).self) {
-            _ = try Portal.parseAsRoot(["create", "arch"])
+            try Portal.Create.validateSource(image: nil, kernel: nil, disk: nil)
+        }
+        #expect(throws: (any Error).self) {
+            try Portal.Create.validateSource(image: nil, kernel: "/tmp/kernel", disk: nil)
+        }
+        #expect(throws: Never.self) {
+            try Portal.Create.validateSource(image: "arch-spin", kernel: nil, disk: nil)
+        }
+        #expect(throws: Never.self) {
+            try Portal.Create.validateSource(image: nil, kernel: "/tmp/kernel", disk: "/tmp/disk.img")
+        }
+    }
+
+    @Test func createValidationRejectsBothImageAndManualPaths() {
+        #expect(throws: (any Error).self) {
+            try Portal.Create.validateSource(image: "arch-spin", kernel: "/tmp/kernel", disk: "/tmp/disk.img")
         }
     }
 

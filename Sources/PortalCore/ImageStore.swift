@@ -1,6 +1,6 @@
 import Foundation
 
-public struct ImageCachePaths: Equatable {
+public struct ImageCachePaths: Equatable, Sendable {
     public let root: URL
     public let image: URL
     public let imageSignature: URL
