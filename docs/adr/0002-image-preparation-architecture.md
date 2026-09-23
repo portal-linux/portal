@@ -43,10 +43,16 @@ untouched by any of these problems.
 Guest disk images are built and signed once, on real Linux, in
 `portal-images`' CI - never assembled ad hoc on a contributor's or user's Mac.
 
-- `portal-images` CI is extended to also produce a ready-to-boot, signed raw
-  disk image (correct root ownership, no case-sensitivity risk, no manual
-  patching) as a release artifact, alongside the existing installer ISO.
-  Every image ships a SHA-256 hash and a minisign signature, per the existing
+- `portal-images` CI is extended to produce a ready-to-boot, signed raw disk
+  image (correct root ownership, no case-sensitivity risk, no manual
+  patching) as a release artifact. This replaces an earlier, unworkable plan
+  to also ship an `archiso`-built installer ISO: `archiso` only supports the
+  boot modes vanilla Arch Linux ships for, and vanilla Arch Linux has no
+  aarch64 target at all (that's exactly why ArchLinuxARM exists as a
+  separate project). Since Portal boots guests directly from a kernel,
+  initramfs, and disk image via `VZLinuxBootLoader`, an installer ISO was
+  never actually load-bearing - only the raw disk image is. Every image
+  ships a SHA-256 hash and a minisign signature, per the existing
   signed-manifest design in the project plan.
 - `portal create <name> --image <curated-name>` becomes the default,
   recommended path: download the signed image from a curated release,
