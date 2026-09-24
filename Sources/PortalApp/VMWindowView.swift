@@ -7,13 +7,15 @@ import Foundation
 struct VMWindowView: View {
     let vmName: String
     @State private var virtualMachine: VZVirtualMachine?
+    @State private var consoleController: SerialConsoleController?
     @State private var errorMessage: String?
 
     var body: some View {
         Group {
-            if let virtualMachine {
-                VMHostView(virtualMachine: virtualMachine)
-                    .frame(minWidth: 1280, minHeight: 800)
+            if virtualMachine != nil, let consoleController {
+                SerialTerminalView(controller: consoleController)
+                    .frame(minWidth: 960, minHeight: 600)
+                    .onDisappear { consoleController.stop() }
             } else if let errorMessage {
                 Text(errorMessage)
                     .foregroundStyle(.red)
@@ -48,12 +50,17 @@ struct VMWindowView: View {
                 commandLine: manifest.commandLine
             )
 
+            let controller = SerialConsoleController(guestOutput: Pipe(), guestInput: Pipe())
             let bootstrapper = VMBootstrapper(configuration: vmConfig)
-            let vzConfig = try bootstrapper.makeVirtualMachineConfiguration(boot: boot, enableGraphics: true)
+            let vzConfig = try bootstrapper.makeVirtualMachineConfiguration(
+                boot: boot,
+                serialPortAttachment: controller.serialPortAttachment
+            )
             try vzConfig.validate()
 
             let vm = VZVirtualMachine(configuration: vzConfig)
             virtualMachine = vm
+            consoleController = controller
             vm.start { result in
                 if case .failure(let error) = result {
                     DispatchQueue.main.async {
@@ -64,24 +71,5 @@ struct VMWindowView: View {
         } catch {
             errorMessage = "\(error)"
         }
-    }
-}
-
-struct VMHostView: NSViewRepresentable {
-    let virtualMachine: VZVirtualMachine
-
-    func makeNSView(context: Context) -> VZVirtualMachineView {
-        let view = VZVirtualMachineView()
-        view.virtualMachine = virtualMachine
-        DispatchQueue.main.async {
-            NSApp.activate(ignoringOtherApps: true)
-            view.window?.makeKeyAndOrderFront(nil)
-            view.window?.makeFirstResponder(view)
-        }
-        return view
-    }
-
-    func updateNSView(_ nsView: VZVirtualMachineView, context: Context) {
-        nsView.virtualMachine = virtualMachine
     }
 }

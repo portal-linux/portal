@@ -28,7 +28,8 @@ public struct VMBootstrapper {
         boot: BootImage,
         sharedFolder: SharedFolder? = nil,
         enableRosetta: Bool = false,
-        enableGraphics: Bool = false
+        enableGraphics: Bool = false,
+        serialPortAttachment: VZSerialPortAttachment? = nil
     ) throws -> VZVirtualMachineConfiguration {
         let vzConfig = VZVirtualMachineConfiguration()
         vzConfig.cpuCount = configuration.cpuCount
@@ -49,11 +50,17 @@ public struct VMBootstrapper {
         networkDevice.attachment = VZNATNetworkDeviceAttachment()
         vzConfig.networkDevices = [networkDevice]
 
-        // a gui-launched process (via `open`) has no real stdin/stdout - attaching
-        // a serial port bound to those file handles there can block the guest if
-        // the kernel writes console output into an fd nobody drains. only attach
-        // it for the headless cli path; the graphics path uses the framebuffer.
-        if !enableGraphics {
+        // an explicit attachment (e.g. a pipe pair feeding a gui terminal view)
+        // always wins. otherwise, a gui-launched process (via `open`) has no
+        // real stdin/stdout - attaching a serial port bound to those file
+        // handles there can block the guest if the kernel writes console
+        // output into an fd nobody drains, so only fall back to host stdio for
+        // the headless cli path.
+        if let serialPortAttachment {
+            let serialPort = VZVirtioConsoleDeviceSerialPortConfiguration()
+            serialPort.attachment = serialPortAttachment
+            vzConfig.serialPorts = [serialPort]
+        } else if !enableGraphics {
             let serialPort = VZVirtioConsoleDeviceSerialPortConfiguration()
             serialPort.attachment = VZFileHandleSerialPortAttachment(
                 fileHandleForReading: .standardInput,
